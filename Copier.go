@@ -2,7 +2,6 @@ package copier
 
 import (
 	"encoding/json"
-	"log"
 	"reflect"
 )
 
@@ -12,14 +11,24 @@ type Config struct {
 	OmitByJSON bool
 }
 
+// Copier Contains Details for Copy Operations.
 type Copier struct {
-	Source          interface{}
-	SourceType      reflect.Type
+	Source     interface{}
+	SourceType reflect.Type
+	SourceElem reflect.Value
+	SourceKind reflect.Kind
+	SourceAddr reflect.Type
+
 	Destination     interface{}
 	DestinationType reflect.Type
-	Configuration   Config
+	DestinationElem reflect.Value
+	DestinationKind reflect.Kind
+	DestinationAddr reflect.Type
+
+	Configuration Config
 }
 
+// NewCopier Creates a Copier with Configuration.
 func NewCopier(config Config) *Copier {
 	copier := Copier{
 		Configuration: config,
@@ -29,40 +38,59 @@ func NewCopier(config Config) *Copier {
 }
 
 func (copier *Copier) From(v interface{}) *Copier {
-
 	copier.Source = v
 	copier.SourceType = reflect.TypeOf(v)
+	copier.SourceElem = reflect.Indirect(reflect.ValueOf(v))
+	copier.SourceKind = copier.SourceElem.Kind()
+	copier.SourceAddr = reflect.PtrTo(copier.SourceType)
+
 	return copier
 }
 
 func (copier *Copier) To(v interface{}) *Copier {
-
 	copier.Destination = v
 	copier.DestinationType = reflect.TypeOf(v)
+	copier.DestinationElem = reflect.Indirect(reflect.ValueOf(v))
+	copier.DestinationKind = copier.SourceElem.Kind()
+	copier.DestinationAddr = reflect.PtrTo(copier.SourceType)
+
+	if copier.SourceKind == reflect.Struct {
+		if copier.DestinationKind == reflect.Map {
+			copier.copyStructToMap()
+		}
+
+		if copier.DestinationKind == reflect.Struct {
+			copier.copyStuctToStruct()
+		}
+	}
+
+	if copier.SourceKind == reflect.Map {
+		if copier.DestinationKind == reflect.Map {
+			copier.copyMapToMap()
+		}
+
+		if copier.DestinationKind == reflect.Struct {
+			copier.copyMapToStruct()
+		}
+	}
+
 	return copier
 }
 
-func (copier *Copier) CopyStructToMap() error {
+func (copier *Copier) copyStructToMap() error {
 
-	if copier.Configuration.OmitEmpty {
-		// fromValue := reflect.ValueOf(copier.Source)
-		// toValue := reflect.ValueOf(copier.Destination)
-		log.Println(reflect.TypeOf(copier.Source))
+	if copier.Configuration.OmitByJSON {
+		bytes, err := json.Marshal(copier.SourceAddr)
+		if err != nil {
+			return err
+		}
 
-		// copy data by json.
-		if copier.Configuration.OmitByJSON {
-			bytes, err := json.Marshal(copier.Source)
-			if err != nil {
-				return err
-			}
-
-			err = json.Unmarshal(bytes, &copier.Destination)
-			if err != nil {
-				return err
-			}
+		err = json.Unmarshal(bytes, copier.DestinationAddr)
+		if err != nil {
+			return err
 		}
 	}
-	log.Println("destination", copier.Destination)
+
 	return nil
 }
 
